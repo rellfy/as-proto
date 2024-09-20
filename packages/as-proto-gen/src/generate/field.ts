@@ -437,7 +437,7 @@ export function generateFieldDefaultValue(
         // TODO: handle default value for bytes
         return "new Uint8Array(0)";
       case Type.TYPE_MESSAGE:
-        return generateFieldMessageDefaultValue(fieldDescriptor, keyType);
+        return generateFieldMessageDecodeEmptyBytes(fieldDescriptor, keyType);
       default:
         throw new Error(
           `Type "${fieldDescriptor.getTypeName()}" (${fieldDescriptor.getType()}) is not supported by as-proto-gen`
@@ -475,7 +475,7 @@ function generateFieldBasicDefaultValue(
     case Type.TYPE_BYTES:
       return "new Uint8Array(0)";
     case Type.TYPE_MESSAGE:
-      return generateFieldMessageDefaultValue(fieldDescriptor, type);
+      return `new ${type}()`;
     default:
       throw new Error(
         `Type "${fieldDescriptor.getTypeName()}" (${fieldDescriptor.getType()}) is not supported by as-proto-gen`
@@ -483,7 +483,7 @@ function generateFieldBasicDefaultValue(
   }
 }
 
-function generateFieldMessageDefaultValue(
+function generateFieldMessageDecodeEmptyBytes(
   fieldDescriptor: FieldDescriptorProto,
   type: string,
 ): string {
