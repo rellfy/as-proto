@@ -101,7 +101,7 @@ function generateDecodeMethod(
 
   const Reader = fileContext.registerImport("Reader", "as-proto/assembly");
   const Message = fileContext.registerDefinition(messageName);
-  const Protobuf = fileContext.registerImport("Protobuf", "as-proto/assembly");
+  fileContext.registerImport("Protobuf", "as-proto/assembly");
 
   const scopeContext = new ScopeContext(fileContext, [
     "reader",
@@ -114,7 +114,7 @@ function generateDecodeMethod(
   return `
     static decode(reader: ${Reader}, length: i32): ${Message} {
       const end: usize = length < 0 ? reader.end : reader.ptr + length;
-      const message = ${Protobuf}.decode<${Message}>(new Uint8Array(0), ${Message}.decode);
+      const message = new ${Message}();
 
       while (reader.ptr < end) {
         const tag = reader.uint32();
