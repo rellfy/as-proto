@@ -3,14 +3,13 @@ import {
   FieldDescriptorProto,
 } from "google-protobuf/google/protobuf/descriptor_pb";
 import * as assert from "assert";
-import { camelize } from "humps";
-
-import { generateRef } from "./ref";
-import { FileContext } from "../file-context";
-import { ScopeContext } from "../scope-context";
-import { GeneratorContext } from "../generator-context";
-import Type = FieldDescriptorProto.Type;
+import {camelize} from "humps";
+import {generateRef} from "./ref";
+import {FileContext} from "../file-context";
+import {ScopeContext} from "../scope-context";
+import {GeneratorContext} from "../generator-context";
 import Label = FieldDescriptorProto.Label;
+import Type = FieldDescriptorProto.Type;
 
 export function generateFieldEncodeInstruction(
   fieldDescriptor: FieldDescriptorProto,
@@ -179,9 +178,10 @@ export function generateFieldDecodeInstruction(
   };
 
   if (isMessage) {
+    const fileContext = scopeContext.getFileContext();
     const messageDescriptor = getFieldMessageDescriptor(
       fieldDescriptor,
-      scopeContext.getFileContext().getGeneratorContext()
+      fileContext.getGeneratorContext()
     );
     assert.ok(messageDescriptor);
     const isMap = isMapMessageDescriptor(messageDescriptor);
@@ -191,19 +191,19 @@ export function generateFieldDecodeInstruction(
         getMapKeyAndValueFieldDescriptors(messageDescriptor);
       const keyTypeBasic = generateFieldTypeBasic(
         keyDescriptor,
-        scopeContext.getFileContext()
+        fileContext
       );
       const keyType = generateFieldType(
         keyDescriptor,
-        scopeContext.getFileContext()
+        fileContext
       );
       const valueTypeBasic = generateFieldTypeBasic(
         valueDescriptor,
-        scopeContext.getFileContext()
+        fileContext
       );
       const valueType = generateFieldType(
         valueDescriptor,
-        scopeContext.getFileContext()
+        fileContext
       );
       const fieldVariable = scopeContext.registerName(fieldName);
       const keyVariable = scopeContext.registerName(fieldName + "Key");
@@ -214,8 +214,8 @@ export function generateFieldDecodeInstruction(
       );
       const keyNumber = keyDescriptor.getNumber();
       const valueNumber = valueDescriptor.getNumber();
-      const keyDefaultValue = generateFieldBasicDefaultValue(keyDescriptor);
-      const valueDefaultValue = generateFieldBasicDefaultValue(valueDescriptor);
+      const keyDefaultValue = generateFieldBasicDefaultValue(keyDescriptor, keyType);
+      const valueDefaultValue = generateFieldBasicDefaultValue(valueDescriptor, valueType);
       const keyDecodeInstruction = decodeInstruction(keyDescriptor);
       const valueDecodeInstruction = decodeInstruction(valueDescriptor);
       const setMapConditions = [
@@ -399,7 +399,8 @@ export function generateFieldType(
 
 export function generateFieldDefaultValue(
   fieldDescriptor: FieldDescriptorProto,
-  fileContext: FileContext
+  fileContext: FileContext,
+  keyType: string,
 ): string {
   const isRepeated = fieldDescriptor.getLabel() === Label.LABEL_REPEATED;
   const isMap = isMapFieldDescriptor(
@@ -407,13 +408,13 @@ export function generateFieldDefaultValue(
     fileContext.getGeneratorContext()
   );
   const defaultValue = fieldDescriptor.getDefaultValue();
-
+  const fieldType = fieldDescriptor.getType();
   if (isMap) {
     return "new Map()";
   } else if (isRepeated) {
     return "[]";
   } else if (defaultValue) {
-    switch (fieldDescriptor.getType()) {
+    switch (fieldType) {
       case Type.TYPE_INT32:
       case Type.TYPE_SINT32:
       case Type.TYPE_FIXED32:
@@ -436,18 +437,21 @@ export function generateFieldDefaultValue(
         // TODO: handle default value for bytes
         return "new Uint8Array(0)";
       case Type.TYPE_MESSAGE:
-        return "null";
+        return generateFieldMessageDefaultValue(fieldDescriptor, keyType);
       default:
         throw new Error(
           `Type "${fieldDescriptor.getTypeName()}" (${fieldDescriptor.getType()}) is not supported by as-proto-gen`
         );
     }
   } else {
-    return generateFieldBasicDefaultValue(fieldDescriptor);
+    return generateFieldBasicDefaultValue(fieldDescriptor, keyType);
   }
 }
 
-function generateFieldBasicDefaultValue(fieldDescriptor: FieldDescriptorProto) {
+function generateFieldBasicDefaultValue(
+  fieldDescriptor: FieldDescriptorProto,
+  type: string,
+): string {
   switch (fieldDescriptor.getType()) {
     case Type.TYPE_INT32:
     case Type.TYPE_SINT32:
@@ -471,12 +475,20 @@ function generateFieldBasicDefaultValue(fieldDescriptor: FieldDescriptorProto) {
     case Type.TYPE_BYTES:
       return "new Uint8Array(0)";
     case Type.TYPE_MESSAGE:
-      return "null";
+      return generateFieldMessageDefaultValue(fieldDescriptor, type);
     default:
       throw new Error(
         `Type "${fieldDescriptor.getTypeName()}" (${fieldDescriptor.getType()}) is not supported by as-proto-gen`
       );
   }
+}
+
+function generateFieldMessageDefaultValue(
+  fieldDescriptor: FieldDescriptorProto,
+  type: string,
+): string {
+  assert.ok(fieldDescriptor.getType() === Type.TYPE_MESSAGE);
+  return `Protobuf.decode<${type}>(new Uint8Array(0), ${type}.decode)`;
 }
 
 export function generateFieldTypeInstruction(
@@ -529,8 +541,10 @@ export function isNullableFieldType(
 ): boolean {
   const fieldType = fieldDescriptor.getType();
   assert.ok(fieldType !== undefined);
-
-  return fieldType === Type.TYPE_MESSAGE;
+  // There is no null in protobuf3.
+  // It is not possible to distinguish between a message with default values
+  // versus a "null" message.
+  return false;
 }
 
 export function isManagedFieldType(

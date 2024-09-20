@@ -8,22 +8,27 @@ import {
   generateFieldEncodeInstruction,
   generateFieldName,
   generateFieldType,
-  isManagedFieldType,
 } from "./field";
 import { FileContext } from "../file-context";
 import * as assert from "assert";
 import { ScopeContext } from "../scope-context";
 import { getSafeName } from "../reserved-keywords";
 
+function getMessageName(
+  messageDescriptor: DescriptorProto,
+  fileContext: FileContext,
+): string {
+  const messageName = messageDescriptor.getName();
+  assert.ok(messageName);
+  return fileContext.registerDefinition(messageName);
+}
+
 export function generateMessage(
   messageDescriptor: DescriptorProto,
   fileContext: FileContext,
   compilerOptions: Set<string>
 ): string {
-  const messageName = messageDescriptor.getName();
-  assert.ok(messageName);
-
-  const Message = fileContext.registerDefinition(messageName);
+  const Message = getMessageName(messageDescriptor, fileContext);
   if (compilerOptions.has("gen-helper-methods")) {
     // reserve these names
     fileContext.registerDefinition(`encode${Message}`);
@@ -96,6 +101,7 @@ function generateDecodeMethod(
 
   const Reader = fileContext.registerImport("Reader", "as-proto/assembly");
   const Message = fileContext.registerDefinition(messageName);
+  const Protobuf = fileContext.registerImport("Protobuf", "as-proto/assembly");
 
   const scopeContext = new ScopeContext(fileContext, [
     "reader",
@@ -108,7 +114,7 @@ function generateDecodeMethod(
   return `
     static decode(reader: ${Reader}, length: i32): ${Message} {
       const end: usize = length < 0 ? reader.end : reader.ptr + length;
-      const message = new ${Message}();
+      const message = ${Protobuf}.decode<${Message}>(new Uint8Array(0), ${Message}.decode);
 
       while (reader.ptr < end) {
         const tag = reader.uint32();
@@ -158,16 +164,15 @@ function generateMessageConstructor(
   const fields = getAllFields(messageDescriptor);
 
   const constructorParams = fields
-    .map(
-      (fieldDescriptor) =>
-        `${getSafeName(
-          generateFieldName(fieldDescriptor)
-        )}: ${generateFieldType(
-          fieldDescriptor,
-          fileContext
-        )} = ${generateFieldDefaultValue(fieldDescriptor, fileContext)}`
-    )
-    .join(",\n");
+    .map((fieldDescriptor) => {
+      const keyType = generateFieldType(
+        fieldDescriptor,
+        fileContext
+      );
+      return `${getSafeName(
+        generateFieldName(fieldDescriptor)
+      )}: ${keyType} = ${generateFieldDefaultValue(fieldDescriptor, fileContext, keyType)}`;
+    }).join(",\n");
   const fieldsAssignments = fields
     .map(
       (fieldDescriptor) =>
